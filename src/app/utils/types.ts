@@ -22,6 +22,7 @@ export interface RadioInput extends FormInputBase {
 }
 
 export interface SelectInput extends FormInputBase {
+    map: unknown;
     inputType: 'select';
     options?: FormInputOption[];
 }

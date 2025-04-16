@@ -34,18 +34,21 @@ export const formInputs: FormInput[] = [
         inputName: 'country',
         inputType: 'select',
         options: [],
+        map: []
     },
     {
         labelName: 'State',
         inputName: 'state',
         inputType: 'select',
         options: [],
+        map: []
     },
     {
         labelName: 'City',
         inputName: 'city',
         inputType: 'select',
         options: [],
+        map: []
     },
     {
         labelName: 'Profile Image',
@@ -61,7 +64,7 @@ export const formInputs: FormInput[] = [
     },
     {
         labelName: 'Confirm Password',
-        inputName: 'confirmPassword',
+        inputName: 'confirmpassword',
         inputType: 'password',
         placeholder: 'Confirm password',
     },
