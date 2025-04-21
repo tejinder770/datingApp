@@ -1,6 +1,7 @@
 import React from 'react';
 import { FormInput, TextInput, RadioInput, SelectInput, FileInput } from '../../../utils/types';
 import Link from 'next/link';
+import { SIGNIN_ROUTE, SIGNUP_ROUTE } from '@/app/utils/routes';
 
 export interface FormProps {
     formName: string;
@@ -232,9 +233,9 @@ const Form: React.FC<FormProps> = ({
 
                     <div className='text-white mt-4'>
                         {formName === 'signup' ? (
-                            <p>Already have an account? <Link href={'/signin'} className='hover:underline'>SignIn</Link></p>
+                            <p>Already have an account? <Link href={SIGNIN_ROUTE} className='hover:underline'>SignIn</Link></p>
                         ) : (
-                            <p>Dont have an account? <Link href={'/signup'} className='hover:underline'>SignUp</Link></p>
+                            <p>Dont have an account? <Link href={SIGNUP_ROUTE} className='hover:underline'>SignUp</Link></p>
                         )}
                     </div>
                     <button
