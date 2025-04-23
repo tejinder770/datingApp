@@ -1,55 +1,88 @@
 'use client';
 import { useState, ChangeEvent, FormEvent, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import { uploadToCloudinary } from './services/products/imageService';
-import { createProduct, getProducts } from './services/products/productservice';
+import { createProduct, deleteProduct, getProducts, updateProduct } from './services/products/productService';
+import Form from './components/form';
+import { Product, ProductFormData } from './utils/types';
+import Table from './components/table';
 
-export default function Home() {
-  const [formData, setFormData] = useState({
+const Home = () => {
+  const [formData, setFormData] = useState<ProductFormData>({
     title: '',
     description: '',
     price: '',
     image: null,
     pdf: null,
   });
-  const [productsData, setProductsData] = useState<[]>([]);
-  const imageInputRef = useRef<HTMLInputElement | null>(null);
-  const pdfInputRef = useRef<HTMLInputElement | null>(null);
+  const [productsData, setProductsData] = useState<Product[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const [isAddProduct, setIsAddProduct] = useState<boolean>(false);
+  const [isUpdateProduct, setIsUpdateProduct] = useState<boolean>(false);
   const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [productId, setProductId] = useState<string>('');
 
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         const productsResponse = await getProducts();
-        if (productsResponse) {
-          // console.log('getProductsResponse', productsResponse);
-          setProductsData(productsResponse?.data);
+        if (productsResponse?.data?.status === 200) {
+          setProductsData(productsResponse.data.data);
         }
       } catch (error) {
-        console.log('getProducts Error', error);
+        console.error('getProducts Error', error);
       }
     };
-
     fetchProducts();
   }, []);
+
+  const handleEditProduct = (product: Product) => {
+    if (!product?._id) {
+      console.error('Undefined or invalid id');
+      return;
+    }
+    setProductId(product?._id);
+    setIsUpdateProduct(true);
+    setFormData({
+      title: product.title,
+      description: product.description,
+      price: typeof product.price === 'number' ? product.price.toString() : product.price,
+      image: product.image,
+      pdf: product.pdf,
+    });
+  };
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const { name, value, files } = e.target;
 
-    if (files) {
-      const file = files[0];
-
-      setFormData(prevData => ({
-        ...prevData,
-        [name]: file,
-      }));
-    } else {
-      setFormData(prevData => ({
+    setFormData(prevData => {
+      if (files && files.length > 0) {
+        return {
+          ...prevData,
+          [name]: files[0],
+        };
+      }
+      return {
         ...prevData,
         [name]: value,
-      }));
-    }
+      };
+    });
+  };
+
+  const handleUpdateChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const { name, value, files } = e.target;
+    setFormData(prevData => {
+      if (files && files.length > 0) {
+        return {
+          ...prevData,
+          [name]: files[0],
+        };
+      }
+      return {
+        ...prevData,
+        [name]: value,
+      };
+    });
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -60,11 +93,11 @@ export default function Home() {
       let imageUrl = '';
       let pdfUrl = '';
 
-      if (formData.image) {
+      if (formData.image instanceof File) {
         imageUrl = await uploadToCloudinary(formData.image, 'image');
       }
 
-      if (formData.pdf) {
+      if (formData.pdf instanceof File) {
         pdfUrl = await uploadToCloudinary(formData.pdf, 'pdf');
       }
 
@@ -78,8 +111,7 @@ export default function Home() {
       };
 
       const addProductResponse = await createProduct(productData);
-      if (addProductResponse.status === 201) {
-        // console.log("addProductResponse", addProductResponse);
+      if (addProductResponse?.data?.status === 201) {
         setFormData({
           title: '',
           description: '',
@@ -87,11 +119,10 @@ export default function Home() {
           image: null,
           pdf: null,
         });
+        setIsAddProduct(false);
         if (imageInputRef.current) imageInputRef.current.value = '';
         if (pdfInputRef.current) pdfInputRef.current.value = '';
-        const newProduct = addProductResponse.data;
-        setProductsData((prevData) => [...prevData, newProduct]);
-        setIsAddProduct(false)
+        setProductsData(prev => [...prev, addProductResponse.data.data]);
       }
     } catch (error) {
       console.error('Product error:', error);
@@ -100,150 +131,115 @@ export default function Home() {
     }
   };
 
+  const handleUpdateSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setIsUploading(true);
+    try {
+      const formPayload = new FormData();
+      formPayload.append('id', productId);
+      formPayload.append('title', formData.title);
+      formPayload.append('description', formData.description);
+      formPayload.append('price', formData.price);
+      if (formData.image instanceof File) {
+        formPayload.append('image', formData.image);
+      } else if (formData.image) {
+        formPayload.append('imageUrl', formData.image);
+      }
+      if (formData.pdf instanceof File) {
+        formPayload.append('pdf', formData.pdf);
+      } else if (formData.pdf) {
+        formPayload.append('pdfUrl', formData.pdf);
+      }
+      const updateProductResponse = await updateProduct(formPayload);
+      if (updateProductResponse.data?.status === 200) {
+        setProductsData(prev =>
+          prev.map(item =>
+            item._id === productId ? updateProductResponse.data.data : item
+          )
+        );
+        setIsUpdateProduct(false);
+        setFormData({
+          title: '',
+          description: '',
+          price: '',
+          image: null,
+          pdf: null,
+        });
+      }
+    } catch (error) {
+      console.error('Product update error:', error);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!productId) {
+      console.error('Undefined or invalid ID');
+      return;
+    }
+    try {
+      const response = await deleteProduct(productId);
+      if (response?.success) {
+        setProductsData(prev => prev.filter(product => product._id !== productId));
+      }
+    } catch (error) {
+      console.error('Delete product error:', error);
+    }
+  };
+
+  const handleCancel = () => {
+    setIsAddProduct(false);
+    setIsUpdateProduct(false);
+    setFormData({
+      title: '',
+      description: '',
+      price: '',
+      image: null,
+      pdf: null,
+    });
+  };
+
   return (
     <div className='flex flex-col justify-center items-center min-h-screen p-4 bg-gray-50 z-20'>
-      <button type='submit' onClick={() => setIsAddProduct(true)}>Add Product</button>
-      {isAddProduct &&
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-          <div className="w-full max-w-2xl bg-white p-8 rounded-lg shadow-lg relative">
-            <h1 className='text-3xl font-bold mb-6 text-center text-gray-800'>Create New Product</h1>
-            <form onSubmit={handleSubmit} className='space-y-6'>
-              <div className='space-y-2'>
-                <label htmlFor='title' className='block text-sm font-medium text-gray-700'>
-                  Title
-                </label>
-                <input
-                  type='text'
-                  name='title'
-                  placeholder='Enter title'
-                  onChange={handleChange}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  required
-                  value={formData.title}
-                />
-              </div>
-              <div className='space-y-2'>
-                <label htmlFor='description' className='block text-sm font-medium text-gray-700'>
-                  Description
-                </label>
-                <input
-                  type='text'
-                  name='description'
-                  placeholder='Enter description'
-                  onChange={handleChange}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  required
-                  value={formData.description}
-                />
-              </div>
-              <div className='space-y-2'>
-                <label htmlFor='price' className='block text-sm font-medium text-gray-700'>
-                  Price
-                </label>
-                <input
-                  type='text'
-                  name='price'
-                  placeholder='Enter price'
-                  onChange={handleChange}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  required
-                  value={formData.price}
-                />
-              </div>
-              <div className='space-y-2'>
-                <label htmlFor='image' className='block text-sm font-medium text-gray-700'>
-                  Image
-                </label>
-                <input
-                  type='file'
-                  name='image'
-                  ref={imageInputRef}
-                  onChange={handleChange}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  accept='image/*'
-                />
-              </div>
-              <div className='space-y-2'>
-                <label htmlFor='pdf' className='block text-sm font-medium text-gray-700'>
-                  PDF
-                </label>
-                <input
-                  type='file'
-                  name='pdf'
-                  ref={pdfInputRef}
-                  onChange={handleChange}
-                  className='w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                  accept='application/pdf'
-                />
-              </div>
-              <button
-                type='submit'
-                disabled={isUploading}
-                className='w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-              >
-                {isUploading ? (
-                  <span className='flex items-center justify-center'>
-                    <svg className='animate-spin -ml-1 mr-3 h-5 w-5 text-white' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'>
-                      <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4'></circle>
-                      <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  'Create Product'
-                )}
-              </button>
-              <button
-                type='reset'
-                className='w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors'
-                onClick={() => setIsAddProduct(false)}
-              >
-                Cancel
-              </button>
-            </form>
-          </div>
-        </div>
-      }
-      {productsData && productsData.length > 0 && (
-        <div className="mt-10 w-full overflow-x-auto">
-          <table className="min-w-full bg-white border border-gray-200">
-            <thead>
-              <tr className="bg-gray-100 text-left text-sm font-medium text-gray-700">
-                <th className="py-3 px-4 border-b border-slate-300">Image</th>
-                <th className="py-3 px-4 border-b border-slate-300">Title</th>
-                <th className="py-3 px-4 border-b border-slate-300">Price</th>
-                <th className="py-3 px-4 border-b border-slate-300">Description</th>
-                <th className="py-3 px-4 border-b border-slate-300">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {productsData.map((product, id) => (
-                <tr key={id} className="hover:bg-gray-200">
-                  <td className="py-2 px-4 border-b border-slate-300 cursor-pointer">
-                    {product?.image && (
-                      <Image
-                        src={product.image}
-                        height={100}
-                        width={100}
-                        alt={product.title}
-                        className="w-16 h-16 object-cover rounded"
-                        priority
-                      />
-                    )}
-                  </td>
-                  <td className="py-2 px-4 border-b border-slate-300 cursor-pointer">{product?.title}</td>
-                  <td className="py-2 px-4 border-b border-slate-300 cursor-pointer">${product?.price}</td>
-                  <td className="py-2 px-4 border-b border-slate-300 cursor-pointer">{product?.description}</td>
-                  <td className="py-2 px-4 border-b border-slate-300 cursor-pointer text-blue-600 underline">
-                    <a href={product?.pdf} target="_blank" rel="noopener noreferrer">View PDF</a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <button
+        type='button'
+        className='cursor-pointer bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600'
+        onClick={() => setIsAddProduct(true)}
+      >
+        Add Product
+      </button>
+      <Table
+        productsData={productsData}
+        onEditClick={handleEditProduct}
+        onDeleteClick={handleDeleteProduct}
+      />
+      {isAddProduct && (
+        <Form
+          formName="add"
+          formData={formData}
+          onProductChange={handleChange}
+          isUploading={isUploading}
+          onSubmitClick={handleSubmit}
+          onCancelClick={handleCancel}
+          imageInputRef={imageInputRef}
+          pdfInputRef={pdfInputRef}
+        />
+      )}
+      {isUpdateProduct && (
+        <Form
+          formName="update"
+          formData={formData}
+          onProductChange={handleUpdateChange}
+          isUploading={isUploading}
+          onSubmitClick={handleUpdateSubmit}
+          onCancelClick={handleCancel}
+          imageInputRef={imageInputRef}
+          pdfInputRef={pdfInputRef}
+        />
       )}
     </div>
   );
 }
 
+export default Home
